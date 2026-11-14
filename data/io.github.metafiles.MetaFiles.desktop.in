@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=MetaFiles
+GenericName=File Manager
+GenericName[pl]=Menedżer plików
+Comment=Files organized into projects, in the style of GNOME Files
+Comment[pl]=Pliki zorganizowane w projekty, w stylu Plików GNOME
+Exec=@BIN@ %F
+Icon=io.github.metafiles.MetaFiles
+Terminal=false
+Categories=GNOME;GTK;System;FileTools;FileManager;
+Keywords=folder;manager;explore;disk;filesystem;project;nautilus;
+NoDisplay=false
+StartupNotify=true
+StartupWMClass=io.github.metafiles.MetaFiles
+DBusActivatable=false

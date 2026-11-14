@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local tooling and planning notes
+.claude/
+openspec/
+
+# Screenshots from the UI test harness
+shots/
+*.png
