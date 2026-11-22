@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
     <linearGradient id="back" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2c4248"/>
-      <stop offset="1" stop-color="#1a282c"/>
+      <stop offset="0" stop-color="#45484c"/>
+      <stop offset="1" stop-color="#292b2e"/>
     </linearGradient>
     <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3b5960"/>
-      <stop offset="1" stop-color="#22353a"/>
+      <stop offset="0" stop-color="#5b5f64"/>
+      <stop offset="1" stop-color="#34373a"/>
     </linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3fd0b0"/>
-      <stop offset="1" stop-color="#8b7cf6"/>
+      <stop offset="0" stop-color="#c4c8cc"/>
+      <stop offset="1" stop-color="#80858b"/>
     </linearGradient>
     <clipPath id="clip">
       <path d="M8 40 Q8 32 16 32 H112 Q120 32 120 40 V108 Q120 116 112 116 H16 Q8 116 8 108 Z"/>
@@ -23,26 +23,26 @@
   <path d="M8 20 Q8 12 16 12 H44 Q49 12 52 16 L57 22 H112 Q120 22 120 30 V108 Q120 116 112 116 H16 Q8 116 8 108 Z"
         fill="url(#back)"/>
   <!-- file tabs peeking out of the folder, like browser tabs -->
-  <rect x="62" y="16" width="22" height="12" rx="3" fill="#ebf6f7" opacity="0.92"/>
-  <rect x="87" y="18" width="20" height="10" rx="3" fill="#9fb3b8" opacity="0.8"/>
+  <rect x="62" y="16" width="22" height="12" rx="3" fill="#f1f2f3" opacity="0.92"/>
+  <rect x="87" y="18" width="20" height="10" rx="3" fill="#a9adb1" opacity="0.8"/>
   <!-- folder front -->
   <path d="M8 40 Q8 32 16 32 H112 Q120 32 120 40 V108 Q120 116 112 116 H16 Q8 116 8 108 Z" fill="url(#front)"/>
   <g clip-path="url(#clip)">
     <!-- project sidebar on the right (MetaTerminal family) -->
-    <rect x="84" y="32" width="36" height="84" fill="#152124"/>
+    <rect x="84" y="32" width="36" height="84" fill="#1f2123"/>
     <rect x="84" y="32" width="2" height="84" fill="url(#accent)" opacity="0.9"/>
-    <rect x="91" y="43" width="22" height="10" rx="5" fill="#f08a4b"/>
-    <rect x="91" y="59" width="22" height="10" rx="5" fill="#4fb3d9"/>
-    <rect x="91" y="75" width="22" height="10" rx="5" fill="#a78bfa"/>
-    <rect x="91" y="91" width="22" height="10" rx="5" fill="#33454b"/>
+    <rect x="91" y="43" width="22" height="10" rx="5" fill="#b4b8bc"/>
+    <rect x="91" y="59" width="22" height="10" rx="5" fill="#9a9fa4"/>
+    <rect x="91" y="75" width="22" height="10" rx="5" fill="#82878c"/>
+    <rect x="91" y="91" width="22" height="10" rx="5" fill="#46494d"/>
   </g>
   <!-- file list in the folder -->
-  <rect x="20" y="48" width="10" height="10" rx="2" fill="#5fe3c0"/>
-  <rect x="35" y="50" width="38" height="6" rx="3" fill="#ebf6f7"/>
-  <rect x="20" y="66" width="10" height="10" rx="2" fill="#5fe3c0" opacity="0.75"/>
-  <rect x="35" y="68" width="30" height="6" rx="3" fill="#ebf6f7" opacity="0.8"/>
-  <rect x="20" y="84" width="10" height="10" rx="2" fill="#5fe3c0" opacity="0.5"/>
-  <rect x="35" y="86" width="34" height="6" rx="3" fill="#ebf6f7" opacity="0.6"/>
+  <rect x="20" y="48" width="10" height="10" rx="2" fill="#cfd2d5"/>
+  <rect x="35" y="50" width="38" height="6" rx="3" fill="#f1f2f3"/>
+  <rect x="20" y="66" width="10" height="10" rx="2" fill="#cfd2d5" opacity="0.75"/>
+  <rect x="35" y="68" width="30" height="6" rx="3" fill="#f1f2f3" opacity="0.8"/>
+  <rect x="20" y="84" width="10" height="10" rx="2" fill="#cfd2d5" opacity="0.5"/>
+  <rect x="35" y="86" width="34" height="6" rx="3" fill="#f1f2f3" opacity="0.6"/>
   <!-- accent outline of the front -->
   <path d="M9.5 40 Q9.5 33.5 16 33.5 H112 Q118.5 33.5 118.5 40 V108 Q118.5 114.5 112 114.5 H16 Q9.5 114.5 9.5 108 Z"
         fill="none" stroke="url(#accent)" stroke-width="3"/>

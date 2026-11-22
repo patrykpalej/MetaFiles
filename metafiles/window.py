@@ -14,6 +14,16 @@ from metafiles.sidebar import SIDEBAR_KEYS, ProjectSidebar
 from metafiles.storage import ProjectState
 
 
+def app_brand():
+    """Icon and name of the application, shown at the left of the header bar."""
+    box = Gtk.Box(spacing=8, margin_start=4, margin_end=6, valign=Gtk.Align.CENTER)
+    box.append(Gtk.Image(icon_name=APP_ID, pixel_size=20))
+    label = Gtk.Label(label=APP_NAME)
+    label.add_css_class("heading")
+    box.append(label)
+    return box
+
+
 class MainWindow(FileActionsMixin, Adw.ApplicationWindow):
     def __init__(self, app, session):
         super().__init__(application=app, title=APP_NAME)
@@ -66,7 +76,7 @@ class MainWindow(FileActionsMixin, Adw.ApplicationWindow):
         places_view = Adw.ToolbarView()
         places_header = Adw.HeaderBar(show_end_title_buttons=False)
         self.places_title = Adw.WindowTitle(title=APP_NAME)
-        places_header.set_title_widget(self.places_title)
+        places_header.pack_start(app_brand())
         self.progress_button = Gtk.MenuButton(icon_name="emblem-synchronizing-symbolic", visible=False,
                                               tooltip_text=_("Operations"))
         places_header.pack_end(self.progress_button)
@@ -87,6 +97,8 @@ class MainWindow(FileActionsMixin, Adw.ApplicationWindow):
         self.places_toggle = Gtk.ToggleButton(icon_name="sidebar-show-symbolic", tooltip_text=_("Show Sidebar"))
         self.places_toggle.set_active(self.session.places_visible)
         self.places_toggle.connect("toggled", lambda b: self.set_places_visible(b.get_active()))
+        self.brand_hidden_sidebar = app_brand()
+        self.header.pack_start(self.brand_hidden_sidebar)
         self.header.pack_start(self.places_toggle)
         history = Gtk.Box()
         history.add_css_class("linked")
@@ -189,6 +201,7 @@ class MainWindow(FileActionsMixin, Adw.ApplicationWindow):
         self.places_toggle.set_active(self.inner.get_show_sidebar())
         # Like Nautilus: the sidebar button shows only while the sidebar is hidden.
         self.places_toggle.set_visible(not self.inner.get_show_sidebar())
+        self.brand_hidden_sidebar.set_visible(not self.inner.get_show_sidebar())
         self.projects_toggle.set_active(projects)
         self.header.set_show_start_title_buttons(not self.inner.get_show_sidebar())
 

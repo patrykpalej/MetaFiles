@@ -7,6 +7,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk
 from metafiles import fileutil
 from metafiles.i18n import _
 from metafiles.pane import is_virtual
+from metafiles.remote import is_remote_path
 from metafiles.storage import new_tab_state
 from metafiles.tab import Tab
 
@@ -63,7 +64,9 @@ class ProjectView(Gtk.Stack):
 
     @property
     def available(self):
-        return self.loose or os.path.isdir(self.root)
+        # The sidebar asks this on every redraw: a project on a network mount is assumed
+        # reachable (its panes report a dead server) instead of stat'ing it here.
+        return self.loose or is_remote_path(self.root) or os.path.isdir(self.root)
 
     def contains(self, path):
         """Whether items at path may be listed here (always true when not locked)."""
@@ -99,6 +102,10 @@ class ProjectView(Gtk.Stack):
         path = gf.get_path()
         if path is None:
             return gf.get_uri()
+        if is_remote_path(path):
+            # Restoring a session must not stat a server that may be gone; the pane's
+            # asynchronous listing reports a missing folder instead.
+            return gf.get_uri() if self.allows(gf.get_uri()) else self.root_uri
         while path and not os.path.isdir(path):
             parent = os.path.dirname(path)
             if parent == path:

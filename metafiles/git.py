@@ -17,6 +17,8 @@ from typing import Callable, Iterable
 
 from gi.repository import Gio, GLib, GObject
 
+from metafiles.remote import is_remote_path
+
 STATUS_ORDER = ["conflicted", "modified", "deleted", "renamed", "added", "untracked", "ignored"]
 _STRENGTH = {status: index for index, status in enumerate(STATUS_ORDER)}
 
@@ -50,7 +52,9 @@ def find_repo_root(path: str) -> str | None:
     A directory counts as a root when it contains ``.git`` (a directory, or a file
     as used by worktrees and submodules). Returns the realpath of the root or None.
     """
-    if not path:
+    if not path or is_remote_path(path):
+        # Walking up a network mount stats every level on the GTK thread; a dead server
+        # would freeze the app. Git status over sshfs/gvfs is impractically slow anyway.
         return None
     current = os.path.realpath(path)
     if not os.path.isdir(current):

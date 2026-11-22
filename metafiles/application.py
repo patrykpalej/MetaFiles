@@ -10,8 +10,10 @@ from metafiles.actions import parse_actions
 from metafiles.bookmarks import Bookmarks
 from metafiles.clipboard import Clipboard
 from metafiles.git import GitManager
+from metafiles.i18n import _
 from metafiles.nautilus_settings import NautilusSettings
 from metafiles.operations import FileOperations
+from metafiles.remote import Watchdog
 from metafiles.shortcuts import accel_map
 from metafiles.starred import StarredStore
 from metafiles.storage import config_path, load_config, load_session, save_session
@@ -94,6 +96,13 @@ class Application(Adw.Application):
         self._load_actions()
         self._watch_config()
         self.apply_accels()
+        self.watchdog = Watchdog(self._on_watchdog_recovered)
+        if os.environ.get("METAFILES_NO_WATCHDOG") != "1":
+            self.watchdog.start()
+
+    def _on_watchdog_recovered(self, actions):
+        if actions:
+            self.toast(_("A server stopped responding; its connection was closed"))
 
     def _load_actions(self):
         self.custom_actions, errors = parse_actions(self.config.get("actions", []))
@@ -141,6 +150,7 @@ class Application(Adw.Application):
 
     def _on_window_destroy(self, *_):
         self.window = None
+        self.watchdog.stop()
         self.ops.shutdown()
         self.git.shutdown()
         self.quit()

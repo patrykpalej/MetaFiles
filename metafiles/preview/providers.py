@@ -321,7 +321,7 @@ def folder(gf, info, token, done, compact, size_callback=None):
 def other(gf, info, token, done, compact, thumbnail=None):
     theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
     icon = info.get_icon() or Gio.ThemedIcon.new("text-x-generic")
-    paintable = theme.lookup_by_gicon(icon, 128, 1, Gtk.TextDirection.NONE, Gtk.IconLookupFlags.NONE)
+    paintable = theme.lookup_by_gicon(icon, 128, 1, Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0))
     picture = Gtk.Picture.new_for_paintable(paintable)
     picture.set_can_shrink(False)
     picture.set_vexpand(True)

@@ -14,6 +14,8 @@ from metafiles.fileview import (
 )
 from metafiles.i18n import _, ngettext
 from metafiles.nautilus_settings import GRID_ZOOM_LEVELS, LIST_ZOOM_LEVELS, local_only_allows
+from metafiles import remote
+from metafiles.remote import REMOTE_TIMEOUT_S, is_remote_location, local_path
 
 THUMBNAIL_MIME_PREFIXES = ("image/", "video/", "application/pdf", "application/vnd.oasis", "application/epub",
                            "application/x-cbr", "application/x-cbz", "audio/x-mpegurl", "font/",
@@ -78,6 +80,7 @@ class Pane(Gtk.Box):
         self._loading = False
         self._status_timeout = 0
         self._flat_folder = None
+        self._remote_timeout = 0
         self.free_space = None
 
         self._build_model()
@@ -263,7 +266,8 @@ class Pane(Gtk.Box):
             uri = uri.get_uri()
         if not is_virtual(uri):
             gf = Gio.File.new_for_uri(uri)
-            path = gf.get_path()
+            # Remote folders are checked by the asynchronous listing, never by a blocking stat.
+            path = local_path(gf)
             if path and not os.path.isdir(path):
                 if os.path.exists(path):
                     # A file: show its folder with the file selected.
@@ -310,24 +314,80 @@ class Pane(Gtk.Box):
         if self._fill_cancel is not None:
             self._fill_cancel.cancel()
             self._fill_cancel = None
+        if self._remote_timeout:
+            GLib.source_remove(self._remote_timeout)
+            self._remote_timeout = 0
 
-    def _fill_directory(self, gf):
-        """Enumerate the folder asynchronously and keep it updated with a monitor."""
+    def _fill_directory(self, gf, mount_attempted=False):
+        """Enumerate the folder asynchronously and keep it updated with a monitor.
+
+        A remote folder gets REMOTE_TIMEOUT_S to answer each request; when the server stays
+        silent the listing is cancelled and the connection force-closed, so a dead server
+        never leaves the pane (or, through a blocking call, the whole app) hanging.
+        """
         cancellable = Gio.Cancellable()
         self._fill_cancel = cancellable
         self._loading = True
         self.source.remove_all()
         self.view.show_mode(self.view_mode, self.visible_columns())
         started = time.monotonic()
+        is_remote = is_remote_location(gf)
+        if is_remote:
+            remote.track(gf)
+
+        def arm_timeout():
+            if not is_remote:
+                return
+            if self._remote_timeout:
+                GLib.source_remove(self._remote_timeout)
+            self._remote_timeout = GLib.timeout_add_seconds(REMOTE_TIMEOUT_S, on_timeout)
+
+        def disarm_timeout():
+            if self._remote_timeout:
+                GLib.source_remove(self._remote_timeout)
+                self._remote_timeout = 0
+
+        def on_timeout():
+            self._remote_timeout = 0
+            if cancellable.is_cancelled():
+                return False
+            cancellable.cancel()
+            self._fill_cancel = None
+            self._loading = False
+            self._server_not_responding(gf)
+            self._schedule_status()
+            return False
+
+        def start_monitor():
+            # Creating a gvfs monitor is a blocking D-Bus call to the backend: for remote
+            # folders do it only after the server has just answered.
+            if cancellable.is_cancelled() or self._monitor is not None:
+                return
+            try:
+                self._monitor = gf.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+                self._monitor.set_rate_limit(300)
+                self._monitor.connect("changed", self._on_monitor)
+            except GLib.Error:
+                self._monitor = None
 
         def on_enum(source, result):
             try:
                 enumerator = source.enumerate_children_finish(result)
             except GLib.Error as e:
-                if not e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED):
-                    self._loading = False
-                    self.view.show_empty("dialog-error-symbolic", _("Unable to access location"), e.message)
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED):
+                    return
+                disarm_timeout()
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_MOUNTED) and not mount_attempted:
+                    # sftp://, smb://, ftp://, dav://... are not mounted yet: connect first
+                    # (asking for a user name / password like Nautilus), then list again.
+                    self._fill_cancel = None
+                    self._mount_and_load(gf)
+                    return
+                self._loading = False
+                self.view.show_empty("dialog-error-symbolic", _("Unable to access location"), e.message,
+                                     action=(_("Reconnect"), lambda: self._reconnect(gf)) if is_remote else None)
                 return
+            arm_timeout()
             enumerator.next_files_async(500, GLib.PRIORITY_DEFAULT, cancellable, on_batch, [])
 
         def on_batch(enumerator, result, collected):
@@ -337,6 +397,7 @@ class Pane(Gtk.Box):
                 infos = []
             if cancellable.is_cancelled():
                 return
+            arm_timeout()
             for info in infos:
                 info.set_attribute_object("standard::file", enumerator.get_child(info))
             collected.extend(infos)
@@ -347,19 +408,72 @@ class Pane(Gtk.Box):
             if infos:
                 enumerator.next_files_async(1000, GLib.PRIORITY_DEFAULT, cancellable, on_batch, collected)
                 return
+            disarm_timeout()
             self.source.splice(self.source.get_n_items(), 0, collected)
             enumerator.close_async(GLib.PRIORITY_DEFAULT, None, None, None)
             self._loading = False
             self._finish_loading()
+            if is_remote:
+                start_monitor()
 
+        arm_timeout()
         gf.enumerate_children_async(ATTRIBUTES, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT,
                                     cancellable, on_enum)
-        try:
-            self._monitor = gf.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
-            self._monitor.set_rate_limit(300)
-            self._monitor.connect("changed", self._on_monitor)
-        except GLib.Error:
-            self._monitor = None
+        if not is_remote:
+            start_monitor()
+
+    def _server_not_responding(self, gf):
+        """The remote folder did not answer in time: close the connection, offer to reconnect."""
+        host = gf.get_uri().split("://", 1)[-1].split("/", 1)[0] or gf.get_parse_name()
+        self.view.show_empty("network-error-symbolic", _("The server is not responding"),
+                             _("The connection to {host} was closed so that the app does not freeze.").format(host=host),
+                             action=(_("Reconnect"), lambda: self._reconnect(gf)))
+        remote.disconnect_async([gf])
+
+    def _reconnect(self, gf):
+        if gf.is_native():
+            # A path on a FUSE mount (sshfs, the gvfs bridge): nothing to mount from here.
+            self._load()
+            return
+        self._mount_and_load(gf)
+
+    def _mount_and_load(self, gf):
+        """Mount the remote location (gvfs asks for credentials / host keys), then list it."""
+        self._loading = True
+        self.view.show_empty("network-transmit-receive-symbolic", _("Connecting…"))
+        operation = Gtk.MountOperation.new(self.get_root())
+        cancellable = Gio.Cancellable()
+        self._fill_cancel = cancellable  # navigating away abandons the connection attempt
+
+        def still_here():
+            return not cancellable.is_cancelled() and (
+                self.location == gf.get_uri() or Gio.File.new_for_uri(self.location).equal(gf))
+
+        def done(source, result):
+            try:
+                source.mount_enclosing_volume_finish(result)
+            except GLib.Error as e:
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED) and cancellable.is_cancelled():
+                    return
+                if not e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.ALREADY_MOUNTED):
+                    if not still_here():
+                        return
+                    self._loading = False
+                    if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.FAILED_HANDLED):
+                        # The user closed the password dialog.
+                        title, message = _("Connection cancelled"), ""
+                    else:
+                        title, message = _("Unable to connect to the server"), e.message
+                    self.view.show_empty("dialog-error-symbolic", title, message,
+                                         action=(_("Reconnect"), lambda: self._reconnect(gf)))
+                    self._schedule_status()
+                    return
+            if still_here():
+                self._fill_cancel = None
+                self._fill_directory(gf, mount_attempted=True)
+                self._query_free_space()
+
+        gf.mount_enclosing_volume(Gio.MountMountFlags.NONE, operation, cancellable, done)
 
     def _fill_virtual(self, uri):
         cancellable = Gio.Cancellable()
@@ -454,13 +568,39 @@ class Pane(Gtk.Box):
                 return i
         return -1
 
+    def _query_file(self, gf, callback):
+        """callback(info) with fresh file info: blocking for local files (cheap and keeps
+        ordering), asynchronous for remote ones so a dead server cannot freeze the app."""
+        if not is_remote_location(gf):
+            try:
+                info = query_info_with_file(gf)
+            except GLib.Error:
+                return
+            callback(info)
+            return
+        cancellable = self._fill_cancel
+
+        def done(source, result):
+            try:
+                info = source.query_info_finish(result)
+            except GLib.Error:
+                return
+            if cancellable is not None and cancellable.is_cancelled():
+                return
+            info.set_attribute_object("standard::file", source)
+            callback(info)
+
+        gf.query_info_async(ATTRIBUTES, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable, done)
+
     def _add_file(self, gf):
         if self._find_index(gf) >= 0:
             self._update_file(gf)
             return
-        try:
-            info = query_info_with_file(gf)
-        except GLib.Error:
+        self._query_file(gf, lambda info: self._append_info(gf, info))
+
+    def _append_info(self, gf, info):
+        if self._find_index(gf) >= 0:
+            self._replace_info(gf, info)
             return
         self.source.append(info)
         self._update_empty_state()
@@ -476,14 +616,14 @@ class Pane(Gtk.Box):
             self._update_empty_state()
 
     def _update_file(self, gf):
+        if self._find_index(gf) < 0:
+            return
+        self._query_file(gf, lambda info: self._replace_info(gf, info))
+
+    def _replace_info(self, gf, info):
         index = self._find_index(gf)
-        if index < 0:
-            return
-        try:
-            info = query_info_with_file(gf)
-        except GLib.Error:
-            return
-        self.source.splice(index, 1, [info])
+        if index >= 0:
+            self.source.splice(index, 1, [info])
 
     def reload(self):
         DIR_COUNTER.cache.clear()
@@ -978,7 +1118,8 @@ class Pane(Gtk.Box):
                     return format_size(total)
                 if path and path in SIZE_CALCULATOR.running:
                     return _("calculating…")
-                if path and local_only_allows(self.settings.get("preferences", "show-directory-item-counts"), True):
+                if path and local_only_allows(self.settings.get("preferences", "show-directory-item-counts"),
+                                              not remote.is_remote_path(path)):
                     def update(n, cell=cell, info=info):
                         if cell is not None and cell.info is info:
                             cell.label.set_text(self.column_text("size", info))
@@ -1311,4 +1452,4 @@ class Pane(Gtk.Box):
 def _paintable(info, size, scale):
     theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
     icon = info.get_icon() or Gio.ThemedIcon.new("text-x-generic")
-    return theme.lookup_by_gicon(icon, size, scale, Gtk.TextDirection.NONE, Gtk.IconLookupFlags.NONE)
+    return theme.lookup_by_gicon(icon, size, scale, Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0))

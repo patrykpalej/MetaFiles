@@ -8,6 +8,7 @@ import unicodedata
 from gi.repository import Gio, GLib
 
 from metafiles.i18n import _, ngettext
+from metafiles.remote import is_remote_path
 
 HOME = os.path.expanduser("~")
 
@@ -19,7 +20,11 @@ def short_path(path):
 
 
 def real(path):
-    return os.path.realpath(os.path.expanduser(path))
+    """realpath, except on network mounts: resolving symlinks there would block on a dead server."""
+    path = os.path.expanduser(path)
+    if is_remote_path(path):
+        return os.path.normpath(path)
+    return os.path.realpath(path)
 
 
 def inside(path, root):

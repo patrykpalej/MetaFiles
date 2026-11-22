@@ -6,6 +6,7 @@ import threading
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from metafiles import fileutil
+from metafiles.remote import is_remote_path
 from metafiles.fuzzy import FuzzyIndex, build_index_async
 from metafiles.i18n import _
 
@@ -109,7 +110,7 @@ class QuickOpen(Adw.Dialog):
             if not uri.startswith("file://"):
                 continue
             path = Gio.File.new_for_uri(uri).get_path()
-            if path and fileutil.inside(path, self.root) and os.path.exists(path):
+            if path and fileutil.inside(path, self.root) and (is_remote_path(path) or os.path.exists(path)):
                 modified = item.get_modified()
                 items.append((modified.to_unix() if modified else 0, os.path.relpath(path, self.root)))
         items.sort(reverse=True)

@@ -306,3 +306,39 @@ def perf_big_folder(h, folder):
     h.step(300, scroll)
     h.step(100, lambda: h.check(state["scroll"] < 3.0, f"30 scroll jumps in {state['scroll']:.2f} s"))
     h.shot("31-big-folder", 300)
+
+
+def remote_timeout(h, project):
+    """A remote folder that never answers: the pane gives up, disconnects and stays usable."""
+    from metafiles import pane as pane_module
+
+    state = {"disconnected": [], "original": Gio.File.enumerate_children_async}
+    _add(h, project)
+
+    def hang():
+        pane_module.REMOTE_TIMEOUT_S = 1
+        pane_module.is_remote_location = lambda location: True
+        pane_module.remote.track = lambda location: None
+        pane_module.remote.disconnect_async = lambda locations, callback=None: state["disconnected"].extend(locations)
+        Gio.File.enumerate_children_async = lambda *args, **kwargs: None  # the server never answers
+        h.win.active_pane.reload()
+    h.step(2600, hang, "simulate a dead server")
+
+    def check_timed_out():
+        view = h.win.active_pane.view
+        h.check(view.stack.get_visible_child_name() == "empty", "pane shows the empty state after the timeout")
+        h.check(view.empty.get_title() == pane_module._("The server is not responding"),
+                f"title: {view.empty.get_title()!r}")
+        h.check(view.empty.get_child() is not None, "a Reconnect button is offered")
+        h.check(len(state["disconnected"]) == 1, f"connection closed: {state['disconnected']}")
+        h.check(not h.win.active_pane._loading, "pane is no longer loading")
+    h.step(100, check_timed_out)
+    h.shot("01-not-responding", 100)
+
+    def reconnect():
+        Gio.File.enumerate_children_async = state["original"]
+        h.win.active_pane.view.empty.get_child().emit("clicked")
+    h.step(1200, reconnect, "server is back, click Reconnect")
+    h.step(100, lambda: h.check(h.win.active_pane.filter_model.get_n_items() > 0,
+                                 f"listed again: {h.win.active_pane.filter_model.get_n_items()}"))
+    h.shot("02-reconnected", 100)

@@ -16,6 +16,7 @@ from metafiles import fileutil
 from metafiles.fileutil import format_date, format_size
 from metafiles.i18n import _, ngettext
 from metafiles.nautilus_settings import GRID_ICON_SIZES, GRID_ZOOM_LEVELS, LIST_ICON_SIZES, LIST_ZOOM_LEVELS
+from metafiles.remote import is_remote_path
 
 ATTRIBUTES = ",".join([
     "standard::name", "standard::display-name", "standard::edit-name", "standard::type", "standard::size",
@@ -98,7 +99,8 @@ class HiddenNames:
         self._cache = {}
 
     def names(self, folder_path):
-        if not folder_path:
+        # This runs in the filter on the GTK thread: never stat a network mount from here.
+        if not folder_path or is_remote_path(folder_path):
             return frozenset()
         now = time.monotonic()
         cached = self._cache.get(folder_path)
@@ -241,7 +243,7 @@ def _icon_paintable(info, size, scale):
     icon = info.get_icon()
     if icon is None:
         icon = Gio.ThemedIcon.new("text-x-generic")
-    return theme.lookup_by_gicon(icon, size, scale, Gtk.TextDirection.NONE, Gtk.IconLookupFlags.NONE)
+    return theme.lookup_by_gicon(icon, size, scale, Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0))
 
 
 class NameCell(Cell):
@@ -499,10 +501,19 @@ class FileView(Gtk.Box):
             for index, key in enumerate(order):
                 self.column_view.insert_column(index, self.columns[key])
 
-    def show_empty(self, icon, title, description=""):
+    def show_empty(self, icon, title, description="", action=None):
+        """action: optional (label, callback) shown as a button under the message."""
         self.empty.set_icon_name(icon)
         self.empty.set_title(title)
         self.empty.set_description(description)
+        button = None
+        if action is not None:
+            label, callback = action
+            button = Gtk.Button(label=label, halign=Gtk.Align.CENTER)
+            button.add_css_class("pill")
+            button.add_css_class("suggested-action")
+            button.connect("clicked", lambda *_: callback())
+        self.empty.set_child(button)
         self.stack.set_visible_child_name("empty")
 
     @property
